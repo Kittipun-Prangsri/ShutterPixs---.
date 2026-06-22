@@ -1411,3 +1411,32 @@ footer {
         grid-template-columns: 1fr;
     }
 }
+
+/* Admin Access Links on Landing Page */
+.btn-admin-nav {
+    padding: 8px 12px;
+    margin-right: 12px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: #9ca3af !important;
+    transition: all 0.3s ease;
+}
+.btn-admin-nav:hover {
+    color: #22d3ee !important;
+    border-color: rgba(34, 211, 238, 0.3);
+    background: rgba(34, 211, 238, 0.08);
+    box-shadow: 0 0 10px rgba(34, 211, 238, 0.15);
+}
+.footer-admin-link {
+    color: #6b7280;
+    text-decoration: none;
+    margin-left: 8px;
+    transition: color 0.3s ease;
+}
+.footer-admin-link:hover {
+    color: #22d3ee;
+}

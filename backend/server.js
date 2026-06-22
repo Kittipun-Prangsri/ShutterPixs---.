@@ -125,11 +125,13 @@ if (lineConfig.channelAccessToken && lineConfig.channelSecret && !lineConfig.cha
 // Set JSON parsers for standard routes
 app.use(express.json());
 
-// Register High-Performance CMS API routes for Images and Packages
+// Register High-Performance CMS API routes for Images, Packages, and Bookings
 const imageRoutes = require('./routes/imageRoutes');
 const packageRoutes = require('./routes/packageRoutes');
+const bookingRoutes = require('./routes/bookingRoutes');
 app.use('/api', imageRoutes);
 app.use('/api', packageRoutes);
+app.use('/api', bookingRoutes);
 
 // API: Get Portfolios
 app.get('/api/portfolios', async (req, res) => {

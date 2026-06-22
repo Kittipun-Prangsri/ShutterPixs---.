@@ -1,0 +1,1162 @@
+// Client JS Controller for ShutterPixs Admin CMS Dashboard
+const API_BASE = '/api';
+
+// State management
+let appToken = localStorage.getItem('shutterpixs_admin_token') || null;
+let currentTab = 'dashboard';
+let allBookingsList = [];
+let allPackagesList = [];
+let allPortfoliosList = [];
+let galleryCursor = null;
+let prevCursorsStack = []; // สำหรับบันทึก Cursor ของหน้าก่อนหน้า
+let selectedImageFile = null;
+let isOfflineMode = false;
+
+// Mock Fallback Data
+const fallbackPackages = [
+  { id: "pkg1", name: "Bronze Package", price: 4900, description: "ช่างภาพหลัก 1 คน, 4 ชั่วโมง, ไฟล์รูปปรับโทนสีทั้งหมด, ส่งงาน 7-10 วัน", is_seasonal: false },
+  { id: "pkg2", name: "Silver Package", price: 8900, description: "ช่างภาพ 2 คน (หลัก+แคนดิด), 6 ชั่วโมง, กล่องไม้พร้อมแฟลชไดรฟ์, ส่งงาน 5-7 วัน", is_seasonal: false },
+  { id: "pkg3", name: "Gold Package", price: 14900, description: "ช่างภาพ 3 คน, 8 ชั่วโมง (เต็มวัน), บริการไฟสตูดิโอขนาดใหญ่หน้างาน, โฟโต้บุ๊คระดับพรีเมียม, ส่งงานด่วน 3 วัน", is_seasonal: false }
+];
+
+const fallbackBookings = [
+  { id: "SP-20260622-789", customer_name: "คุณเกริกพล", customer_phone: "0812345678", event_type: "wedding", event_date: "2026-07-12", package_name: "Silver Package", total_price: 8900, status: "pending", created_at: "2026-06-22T04:22:00.000Z" },
+  { id: "SP-20260622-456", customer_name: "คุณพรพิศ", customer_phone: "0898765432", event_type: "ordination", event_date: "2026-07-20", package_name: "Bronze Package", total_price: 4900, status: "confirmed", created_at: "2026-06-21T09:15:00.000Z" },
+  { id: "SP-20260621-123", customer_name: "คุณกิตติทัต", customer_phone: "0855551234", event_type: "graduation", event_date: "2026-08-05", package_name: "Gold Package", total_price: 14900, status: "completed", created_at: "2026-06-20T14:30:00.000Z" }
+];
+
+const fallbackPortfolios = [
+  { id: "p1", name: "Eternal Love at The Glasshouse", category: "wedding", url: "assets/images/wedding_1.jpg", description: "Modern romantic garden wedding photoshoot featuring natural light and candid moments." },
+  { id: "p2", name: "Traditional Thai Blessed Union", category: "wedding", url: "assets/images/wedding_2.jpg", description: "Elegant traditional Thai wedding ceremony capturing the exquisite details of Thai attire and sacred water pouring ritual." },
+  { id: "p3", name: "Pristine Ordination Ceremony", category: "ordination", url: "assets/images/ordination_1.jpg", description: "Shaving ritual and serene ordination ceremony at the historic Wat Phra Kaew, capturing local cultural legacy." },
+  { id: "p4", name: "Path to Enlightenment", category: "ordination", url: "assets/images/ordination_2.jpg", description: "The sacred moments of a monk walking around the chapel, surrounded by joyful family and friends." },
+  { id: "p5", name: "Proud Achievements at Chulalongkorn", category: "graduation", url: "assets/images/graduation_1.jpg", description: "Joyful graduation outdoor portrait photoshoot with iconic campus backdrops and premium color grading." },
+  { id: "p6", name: "Milestone Reached!", category: "graduation", url: "assets/images/graduation_2.jpg", description: "Group graduation photography capturing genuine smiles, mortarboard tosses, and bright memories with close friends." },
+  { id: "p7", name: "Minimalist Studio Portraiture", category: "other", url: "assets/images/other_1.jpg", description: "High-end studio profile shoots highlighting personal branding, professional lighting, and editorial styles." },
+  { id: "p8", name: "Sunset Beach Couple Session", category: "other", url: "assets/images/other_2.jpg", description: "Cinematic pre-wedding style couple photoshoot during the golden hour on the white sands of Phuket." }
+];
+
+// DOM Elements
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+    setupEventListeners();
+});
+
+function initApp() {
+    if (appToken) {
+        showAdminPanel();
+    } else {
+        showLoginPanel();
+    }
+}
+
+function showLoginPanel() {
+    document.getElementById('login-overlay').classList.remove('d-none');
+    document.getElementById('admin-container').classList.add('d-none');
+}
+
+function getEmailFromToken(token) {
+    if (!token || token === 'mock-admin-token') return 'admin@shutterpixs.com';
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload).email || 'admin@shutterpixs.com';
+    } catch (e) {
+        console.warn('Failed to parse email from JWT:', e);
+        return 'admin@shutterpixs.com';
+    }
+}
+
+function showAdminPanel() {
+    document.getElementById('login-overlay').classList.add('d-none');
+    document.getElementById('admin-container').classList.remove('d-none');
+    
+    const displayEmail = getEmailFromToken(appToken);
+    document.getElementById('admin-user-email').textContent = appToken === 'mock-admin-token' ? `${displayEmail} (Mock)` : displayEmail;
+    
+    // ตั้งค่าสถานะ Indicator ความปลอดภัย
+    const shieldIcon = document.querySelector('.badge-shield-icon');
+    const indicatorDot = document.querySelector('.indicator-dot');
+    const indicatorText = document.querySelector('.indicator-text');
+    
+    if (appToken === 'mock-admin-token') {
+        shieldIcon.style.color = '#8b5cf6';
+        indicatorDot.className = 'indicator-dot dot-green';
+        indicatorText.textContent = 'ทำงานอยู่ในโหมดจำลอง (Mock Authorization)';
+    } else {
+        shieldIcon.style.color = '#10b981';
+        indicatorDot.className = 'indicator-dot dot-green';
+        indicatorDot.style.backgroundColor = '#10b981';
+        indicatorText.textContent = 'เชื่อมต่อระบบความปลอดภัย Firebase Real-Time แล้ว';
+    }
+
+    // โหลดข้อมูลเข้าแดชบอร์ด
+    loadDashboardStats();
+    switchTab(currentTab);
+}
+
+// -------------------------------------------------------------
+// สับเปลี่ยนหน้าต่างเมนู (Navigation System)
+// -------------------------------------------------------------
+function switchTab(tabId) {
+    currentTab = tabId;
+    
+    // อัปเดต Sidebar Links
+    document.querySelectorAll('.menu-link').forEach(link => {
+        if (link.getAttribute('data-tab') === tabId) {
+            link.classList.add('active');
+        } else {
+            link.classList.remove('active');
+        }
+    });
+
+    // อัปเดตหน้าต่าง Content Panels
+    document.querySelectorAll('.tab-content').forEach(content => {
+        if (content.getAttribute('id') === `tab-${tabId}`) {
+            content.classList.add('active');
+        } else {
+            content.classList.remove('active');
+        }
+    });
+
+    // โหลดข้อมูลเฉพาะหน้าเมื่อกดเปลี่ยนหน้า
+    if (tabId === 'dashboard') {
+        loadDashboardStats();
+    } else if (tabId === 'bookings') {
+        loadBookings();
+    } else if (tabId === 'packages') {
+        loadPackages();
+    } else if (tabId === 'portfolio-manager') {
+        galleryCursor = null;
+        prevCursorsStack = [];
+        loadPortfolio();
+    }
+}
+
+// -------------------------------------------------------------
+// ตั้งค่า Event Listeners ทั้งหมด
+// -------------------------------------------------------------
+function setupEventListeners() {
+    // ฟอร์มเข้าสู่ระบบ
+    document.getElementById('login-form').addEventListener('submit', handleFirebaseLogin);
+    document.getElementById('btn-mock-login').addEventListener('click', handleMockLogin);
+    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+
+    // Sidebar navigation
+    document.querySelectorAll('.menu-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            const tab = link.getAttribute('data-tab');
+            if (tab) {
+                e.preventDefault();
+                switchTab(tab);
+            }
+        });
+    });
+
+    // ค้นหาคิวจองคิว
+    document.getElementById('booking-search').addEventListener('input', filterBookingsTable);
+    document.getElementById('booking-status-filter').addEventListener('change', filterBookingsTable);
+
+    // ฟอร์มแพ็กเกจ (เพิ่ม / แก้ไข)
+    document.getElementById('pkg-is-seasonal').addEventListener('change', (e) => {
+        const dateContainer = document.getElementById('seasonal-dates-container');
+        if (e.target.checked) {
+            dateContainer.classList.remove('d-none');
+            document.getElementById('pkg-start-date').required = true;
+            document.getElementById('pkg-end-date').required = true;
+        } else {
+            dateContainer.classList.add('d-none');
+            document.getElementById('pkg-start-date').required = false;
+            document.getElementById('pkg-end-date').required = false;
+        }
+    });
+
+    document.getElementById('package-form').addEventListener('submit', savePackageData);
+
+    // การลากและวางอัปเดตรูปภาพ (Drag & Drop Zone)
+    const dropzone = document.getElementById('upload-dropzone');
+    const fileInput = document.getElementById('image-file-input');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleFileSelect(e.dataTransfer.files[0]);
+        }
+    });
+
+    document.getElementById('btn-remove-preview').addEventListener('click', clearFileSelection);
+    document.getElementById('upload-image-form').addEventListener('submit', handleImageUploadFlow);
+
+    // กรองรูปภาพพอร์ตโฟลิโอและปุ่มแบ่งหน้า (Pagination)
+    document.getElementById('gallery-category-filter').addEventListener('change', () => {
+        galleryCursor = null;
+        prevCursorsStack = [];
+        loadPortfolio();
+    });
+
+    document.getElementById('btn-prev-page').addEventListener('click', () => {
+        if (prevCursorsStack.length > 0) {
+            // ดึง cursor ก่อนหน้าออกมา
+            galleryCursor = prevCursorsStack.pop();
+            loadPortfolio(true); // ระบุว่าเป็นการย้อนกลับ ไม่ต้องพุช cursor ลงสแต็กอีก
+        }
+    });
+
+    document.getElementById('btn-next-page').addEventListener('click', () => {
+        // next cursor ถูกจัดเก็บในปุ่มเรียบร้อยแล้ว
+        const nextCursor = document.getElementById('btn-next-page').getAttribute('data-cursor');
+        if (nextCursor) {
+            prevCursorsStack.push(galleryCursor); // บันทึก cursor ปัจจุบันไว้สำหรับย้อนกลับ
+            galleryCursor = nextCursor;
+            loadPortfolio();
+        }
+    });
+}
+
+// -------------------------------------------------------------
+// ระบบล็อกอิน (Authentication Logic)
+// -------------------------------------------------------------
+function handleMockLogin() {
+    localStorage.setItem('shutterpixs_admin_token', 'mock-admin-token');
+    appToken = 'mock-admin-token';
+    showToast('เข้าสู่ระบบแบบจำลองสำเร็จ (Mock Mode)');
+    showAdminPanel();
+}
+
+async function handleFirebaseLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('admin-email').value;
+    const password = document.getElementById('admin-password').value;
+    
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังตรวจสอบสิทธิ์...';
+
+    try {
+        if (!window.firebaseAuthInstance || !window.signInWithEmailAndPassword) {
+            throw new Error('ระบบล็อกอิน Firebase ยังไม่ได้เริ่มต้น หรือโหลดไม่สำเร็จ');
+        }
+
+        // ล็อกอินระบบจริงของ Firebase Auth
+        const userCredential = await window.signInWithEmailAndPassword(window.firebaseAuthInstance, email, password);
+        const user = userCredential.user;
+        
+        // รับค่า ID Token จริง (JWT Token) ส่งให้หลังบ้านเพื่อตรวจสอบสิทธิ์
+        const idToken = await user.getIdToken();
+        
+        localStorage.setItem('shutterpixs_admin_token', idToken);
+        appToken = idToken;
+        
+        showToast('เข้าสู่ระบบด้วยบัญชี Firebase สำเร็จ');
+        showAdminPanel();
+    } catch (error) {
+        console.error('Firebase Auth Error:', error);
+        let errorMsg = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง หรือเกิดความผิดพลาดในการเข้าสู่ระบบ';
+        if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            errorMsg = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+        } else if (error.code === 'auth/too-many-requests') {
+            errorMsg = 'ถูกระงับการเข้าสู่ระบบชั่วคราวเนื่องจากพยายามหลายครั้งเกินไป กรุณาลองใหม่ในภายหลัง';
+        }
+        showToast(errorMsg, true);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+async function handleLogout() {
+    try {
+        if (window.firebaseAuthInstance && window.firebaseSignOut) {
+            await window.firebaseSignOut(window.firebaseAuthInstance);
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+    localStorage.removeItem('shutterpixs_admin_token');
+    appToken = null;
+    currentTab = 'dashboard';
+    showToast('ออกจากระบบเรียบร้อยแล้ว', true);
+    showLoginPanel();
+}
+
+// -------------------------------------------------------------
+// บริการดึงข้อมูลสถิติภาพรวม (Dashboard Overview Stats)
+// -------------------------------------------------------------
+async function loadDashboardStats() {
+    try {
+        const headers = { 'Authorization': `Bearer ${appToken}` };
+        
+        let bookings = [];
+        let packages = [];
+        
+        try {
+            // 1. ดึงคิวการจอง
+            const bookingsRes = await fetch(`${API_BASE}/admin/bookings`, { headers });
+            if (!bookingsRes.ok) throw new Error('API Error');
+            const contentType = bookingsRes.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                bookings = await bookingsRes.json();
+                isOfflineMode = false;
+            } else {
+                throw new Error('Not JSON');
+            }
+        } catch (e) {
+            console.warn('Dashboard bookings API unreachable, using local fallback:', e.message);
+            isOfflineMode = true;
+            if (allBookingsList.length === 0) {
+                allBookingsList = [...fallbackBookings];
+            }
+            bookings = allBookingsList;
+        }
+
+        try {
+            // 2. ดึงจำนวนแพ็คเกจ
+            const packagesRes = await fetch(`${API_BASE}/packages`);
+            if (!packagesRes.ok) throw new Error('API Error');
+            const contentType = packagesRes.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                packages = await packagesRes.json();
+            } else {
+                throw new Error('Not JSON');
+            }
+        } catch (e) {
+            console.warn('Dashboard packages API unreachable, using local fallback:', e.message);
+            if (allPackagesList.length === 0) {
+                allPackagesList = [...fallbackPackages];
+            }
+            packages = allPackagesList;
+        }
+
+        allBookingsList = Array.isArray(bookings) ? bookings : [];
+        const activePackagesCount = Array.isArray(packages) ? packages.length : 0;
+
+        // คำนวณสถิติ
+        const total = allBookingsList.length;
+        const pending = allBookingsList.filter(b => b.status === 'pending').length;
+        const confirmed = allBookingsList.filter(b => b.status === 'confirmed').length;
+
+        // อัปเดต UI Stats
+        document.getElementById('stat-total-bookings').textContent = total;
+        document.getElementById('stat-pending-bookings').textContent = pending;
+        document.getElementById('stat-confirmed-bookings').textContent = confirmed;
+        document.getElementById('stat-active-packages').textContent = activePackagesCount;
+
+        // อัปเดตคิวแจ้งเตือนสีแดงในเมนู Sidebar
+        const pendingBadge = document.getElementById('pending-badge');
+        if (pending > 0) {
+            pendingBadge.textContent = pending;
+            pendingBadge.classList.remove('d-none');
+        } else {
+            pendingBadge.classList.add('d-none');
+        }
+
+        // วาดรายการจองล่าสุด 5 รายการ
+        renderRecentBookings();
+    } catch (error) {
+        console.error('Error loading dashboard stats:', error);
+    }
+}
+
+function renderRecentBookings() {
+    const listContainer = document.getElementById('recent-bookings-list');
+    listContainer.innerHTML = '';
+
+    const sorted = [...allBookingsList]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+
+    if (sorted.length === 0) {
+        listContainer.innerHTML = '<tr><td colspan="4" class="text-center">ไม่มีข้อมูลการจองคิวล่าสุด</td></tr>';
+        return;
+    }
+
+    sorted.forEach(b => {
+        const dateThai = new Date(b.event_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+        const statusMap = {
+            pending: '<span class="badge-status badge-pending">รอการยืนยัน</span>',
+            confirmed: '<span class="badge-status badge-confirmed">ยืนยันคิวแล้ว</span>',
+            completed: '<span class="badge-status badge-completed">งานเสร็จสิ้น</span>',
+            cancelled: '<span class="badge-status badge-cancelled">ยกเลิกแล้ว</span>'
+        };
+
+        const row = `
+            <tr>
+                <td><b>${b.id}</b></td>
+                <td>${b.customer_name}</td>
+                <td>${dateThai}</td>
+                <td>${statusMap[b.status] || b.status}</td>
+            </tr>
+        `;
+        listContainer.innerHTML += row;
+    });
+}
+
+// -------------------------------------------------------------
+// จัดการคิวการจองของลูกค้า (Bookings Management)
+// -------------------------------------------------------------
+async function loadBookings() {
+    try {
+        let bookings = [];
+        try {
+            const res = await fetch(`${API_BASE}/admin/bookings`, {
+                headers: { 'Authorization': `Bearer ${appToken}` }
+            });
+            if (!res.ok) throw new Error('API Error');
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                bookings = await res.json();
+                isOfflineMode = false;
+            } else {
+                throw new Error('Not JSON');
+            }
+        } catch (e) {
+            console.warn('Bookings API unreachable, using local fallback:', e.message);
+            isOfflineMode = true;
+            if (allBookingsList.length === 0) {
+                allBookingsList = [...fallbackBookings];
+            }
+            bookings = allBookingsList;
+        }
+        allBookingsList = Array.isArray(bookings) ? bookings : [];
+        renderBookingsTable(allBookingsList);
+    } catch (error) {
+        showToast('ไม่สามารถดึงข้อมูลการจองได้', true);
+    }
+}
+
+function renderBookingsTable(list) {
+    const tableBody = document.getElementById('full-bookings-list');
+    tableBody.innerHTML = '';
+
+    if (list.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="9" class="text-center">ไม่พบรายการนัดหมายช่างภาพที่ตรงตามคิวรี</td></tr>';
+        return;
+    }
+
+    list.forEach(b => {
+        const dateThai = new Date(b.event_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+        const priceThai = Number(b.total_price).toLocaleString('th-TH') + ' บ.';
+        
+        const statusMap = {
+            pending: '<span class="badge-status badge-pending">รอการยืนยัน</span>',
+            confirmed: '<span class="badge-status badge-confirmed">ยืนยันคิวแล้ว</span>',
+            completed: '<span class="badge-status badge-completed">งานเสร็จสิ้น</span>',
+            cancelled: '<span class="badge-status badge-cancelled">ยกเลิกแล้ว</span>'
+        };
+
+        const eventTypeMap = {
+            wedding: 'งานแต่งงาน',
+            ordination: 'งานอุปสมบท',
+            graduation: 'งานรับปริญญา',
+            other: 'งานบุคคล/อื่นๆ'
+        };
+
+        // สร้างปุ่มแอกชั่นตามสถานะปัจจุบัน
+        let actionButtons = '';
+        if (b.status === 'pending') {
+            actionButtons += `
+                <button onclick="updateBookingStatus('${b.id}', 'confirmed')" class="btn-action btn-action-green" title="ยืนยันการรับงาน/มัดจำ">
+                    <i class="fa-solid fa-check"></i>
+                </button>
+            `;
+        } else if (b.status === 'confirmed') {
+            actionButtons += `
+                <button onclick="updateBookingStatus('${b.id}', 'completed')" class="btn-action btn-action-blue" title="ปรับเป็นงานเสร็จสิ้น">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                </button>
+            `;
+        }
+        
+        actionButtons += `
+            <button onclick="deleteBookingData('${b.id}')" class="btn-action btn-action-red" title="ลบข้อมูลการจองคิวนี้">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        `;
+
+        const row = `
+            <tr>
+                <td><b>${b.id}</b></td>
+                <td>${b.customer_name}</td>
+                <td>${b.customer_phone}</td>
+                <td>${eventTypeMap[b.event_type] || b.event_type}</td>
+                <td>${dateThai}</td>
+                <td>${b.package_name}</td>
+                <td>${priceThai}</td>
+                <td>${statusMap[b.status] || b.status}</td>
+                <td class="actions-cell">${actionButtons}</td>
+            </tr>
+        `;
+        tableBody.innerHTML += row;
+    });
+}
+
+function filterBookingsTable() {
+    const searchText = document.getElementById('booking-search').value.toLowerCase();
+    const statusFilter = document.getElementById('booking-status-filter').value;
+
+    const filtered = allBookingsList.filter(b => {
+        const matchesSearch = b.customer_name.toLowerCase().includes(searchText) || 
+                              b.id.toLowerCase().includes(searchText) || 
+                              b.customer_phone.includes(searchText);
+                              
+        const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
+
+        return matchesSearch && matchesStatus;
+    });
+
+    renderBookingsTable(filtered);
+}
+
+async function updateBookingStatus(id, newStatus) {
+    if (!confirm(`ยืนยันการเปลี่ยนสถานะการจอง ${id} เป็น "${newStatus}" หรือไม่?`)) return;
+
+    if (isOfflineMode) {
+        const index = allBookingsList.findIndex(b => b.id === id);
+        if (index !== -1) {
+            allBookingsList[index].status = newStatus;
+            showToast('อัปเดตสถานะการนัดหมายสำเร็จ (โหมดจำลองออฟไลน์)');
+            loadBookings();
+        } else {
+            showToast('ไม่พบรหัสการจองนี้', true);
+        }
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/admin/bookings/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${appToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        if (res.ok) {
+            showToast('อัปเดตสถานะการนัดหมายสำเร็จ');
+            loadBookings();
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถอัปเดตสถานะได้', true);
+        }
+    } catch (error) {
+        const index = allBookingsList.findIndex(b => b.id === id);
+        if (index !== -1) {
+            allBookingsList[index].status = newStatus;
+            showToast('อัปเดตสถานะการนัดหมายสำเร็จ (โหมดจำลองออฟไลน์)');
+            loadBookings();
+        } else {
+            showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', true);
+        }
+    }
+}
+
+async function deleteBookingData(id) {
+    if (!confirm(`⚠ คุณต้องการลบข้อมูลการจองรหัส ${id} ออกจากระบบถาวรหรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+
+    if (isOfflineMode) {
+        allBookingsList = allBookingsList.filter(b => b.id !== id);
+        showToast('ลบรายการจองเรียบร้อยแล้ว (โหมดจำลองออฟไลน์)');
+        loadBookings();
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/admin/bookings/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${appToken}` }
+        });
+
+        if (res.ok) {
+            showToast('ลบรายการจองเรียบร้อยแล้ว');
+            loadBookings();
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถลบรายการได้', true);
+        }
+    } catch (error) {
+        allBookingsList = allBookingsList.filter(b => b.id !== id);
+        showToast('ลบรายการจองเรียบร้อยแล้ว (โหมดจำลองออฟไลน์)');
+        loadBookings();
+    }
+}
+
+// -------------------------------------------------------------
+// จัดการแพ็กเกจและแคมเปญ (Packages Management)
+// -------------------------------------------------------------
+async function loadPackages() {
+    try {
+        let packages = [];
+        try {
+            const res = await fetch(`${API_BASE}/admin/packages`, {
+                headers: { 'Authorization': `Bearer ${appToken}` }
+            });
+            if (!res.ok) throw new Error('API Error');
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                packages = await res.json();
+                isOfflineMode = false;
+            } else {
+                throw new Error('Not JSON');
+            }
+        } catch (e) {
+            console.warn('Packages API unreachable, using local fallback:', e.message);
+            isOfflineMode = true;
+            if (allPackagesList.length === 0) {
+                allPackagesList = [...fallbackPackages];
+            }
+            packages = allPackagesList;
+        }
+        allPackagesList = Array.isArray(packages) ? packages : [];
+        renderPackagesTable(allPackagesList);
+    } catch (error) {
+        showToast('ไม่สามารถดึงข้อมูลคลังแพ็กเกจได้', true);
+    }
+}
+
+function renderPackagesTable(list) {
+    const tableBody = document.getElementById('admin-packages-list');
+    tableBody.innerHTML = '';
+
+    if (list.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center">ไม่พบข้อมูลรายการแพ็กเกจช่างภาพ</td></tr>';
+        return;
+    }
+
+    list.forEach(p => {
+        const priceThai = Number(p.price).toLocaleString('th-TH') + ' บาท';
+        const typeBadge = p.is_seasonal 
+            ? '<span class="badge-status badge-seasonal-yes">แพ็กเกจฤดูกาล (Seasonal)</span>'
+            : '<span class="badge-status badge-seasonal-no">ราคาปกติ (Regular)</span>';
+            
+        const startDate = p.start_date ? new Date(p.start_date).toLocaleDateString('th-TH') : '-';
+        const endDate = p.end_date ? new Date(p.end_date).toLocaleDateString('th-TH') : '-';
+
+        const row = `
+            <tr>
+                <td><b>${p.name}</b></td>
+                <td>${p.description}</td>
+                <td>${priceThai}</td>
+                <td>${typeBadge}</td>
+                <td>${startDate}</td>
+                <td>${endDate}</td>
+                <td class="actions-cell">
+                    <button onclick="editPackageData('${p.id}')" class="btn-action btn-action-blue" title="แก้ไขราคา/รายละเอียด">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button onclick="deletePackageData('${p.id}')" class="btn-action btn-action-red" title="ลบข้อมูลแพ็กเกจนี้">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tableBody.innerHTML += row;
+    });
+}
+
+function openPackageModal() {
+    document.getElementById('package-form').reset();
+    document.getElementById('package-id-field').value = '';
+    document.getElementById('package-modal-title').textContent = 'เพิ่มแพ็กเกจการจองคิวใหม่';
+    document.getElementById('seasonal-dates-container').classList.add('d-none');
+    
+    document.getElementById('package-modal').classList.add('active');
+}
+
+function closePackageModal() {
+    document.getElementById('package-modal').classList.remove('active');
+}
+
+async function editPackageData(id) {
+    if (isOfflineMode) {
+        const p = allPackagesList.find(item => item.id === id);
+        if (p) {
+            document.getElementById('package-id-field').value = p.id;
+            document.getElementById('pkg-name').value = p.name;
+            document.getElementById('pkg-price').value = p.price;
+            document.getElementById('pkg-description').value = p.description;
+            document.getElementById('pkg-is-seasonal').checked = !!p.is_seasonal;
+            
+            const dateContainer = document.getElementById('seasonal-dates-container');
+            if (p.is_seasonal) {
+                dateContainer.classList.remove('d-none');
+                document.getElementById('pkg-start-date').value = p.start_date ? p.start_date.substring(0, 10) : '';
+                document.getElementById('pkg-end-date').value = p.end_date ? p.end_date.substring(0, 10) : '';
+                document.getElementById('pkg-start-date').required = true;
+                document.getElementById('pkg-end-date').required = true;
+            } else {
+                dateContainer.classList.add('d-none');
+                document.getElementById('pkg-start-date').required = false;
+                document.getElementById('pkg-end-date').required = false;
+            }
+
+            document.getElementById('package-modal-title').textContent = 'แก้ไขรายละเอียดแพ็กเกจ';
+            document.getElementById('package-modal').classList.add('active');
+        } else {
+            showToast('ไม่พบข้อมูลแพ็กเกจนี้', true);
+        }
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/admin/packages/${id}`, {
+            headers: { 'Authorization': `Bearer ${appToken}` }
+        });
+        const p = await res.json();
+        
+        document.getElementById('package-id-field').value = p.id;
+        document.getElementById('pkg-name').value = p.name;
+        document.getElementById('pkg-price').value = p.price;
+        document.getElementById('pkg-description').value = p.description;
+        document.getElementById('pkg-is-seasonal').checked = !!p.is_seasonal;
+        
+        const dateContainer = document.getElementById('seasonal-dates-container');
+        if (p.is_seasonal) {
+            dateContainer.classList.remove('d-none');
+            document.getElementById('pkg-start-date').value = p.start_date ? p.start_date.substring(0, 10) : '';
+            document.getElementById('pkg-end-date').value = p.end_date ? p.end_date.substring(0, 10) : '';
+            document.getElementById('pkg-start-date').required = true;
+            document.getElementById('pkg-end-date').required = true;
+        } else {
+            dateContainer.classList.add('d-none');
+            document.getElementById('pkg-start-date').required = false;
+            document.getElementById('pkg-end-date').required = false;
+        }
+
+        document.getElementById('package-modal-title').textContent = 'แก้ไขรายละเอียดแพ็กเกจ';
+        document.getElementById('package-modal').classList.add('active');
+    } catch (error) {
+        showToast('ไม่สามารถดึงข้อมูลแพ็กเกจได้', true);
+    }
+}
+
+async function savePackageData(e) {
+    e.preventDefault();
+    const id = document.getElementById('package-id-field').value;
+    const name = document.getElementById('pkg-name').value;
+    const price = document.getElementById('pkg-price').value;
+    const description = document.getElementById('pkg-description').value;
+    const is_seasonal = document.getElementById('pkg-is-seasonal').checked;
+    
+    const payload = {
+        name,
+        price: Number(price),
+        description,
+        is_seasonal,
+        start_date: is_seasonal ? document.getElementById('pkg-start-date').value : null,
+        end_date: is_seasonal ? document.getElementById('pkg-end-date').value : null
+    };
+
+    if (isOfflineMode) {
+        if (id) {
+            const index = allPackagesList.findIndex(item => item.id === id);
+            if (index !== -1) {
+                allPackagesList[index] = { ...allPackagesList[index], ...payload };
+                showToast('บันทึกข้อมูลแพ็กเกจสำเร็จ (โหมดจำลองออฟไลน์)');
+            }
+        } else {
+            const newId = `pkg${Date.now()}`;
+            allPackagesList.push({ id: newId, ...payload });
+            showToast('เพิ่มแพ็กเกจใหม่สำเร็จ (โหมดจำลองออฟไลน์)');
+        }
+        closePackageModal();
+        loadPackages();
+        return;
+    }
+
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API_BASE}/admin/packages/${id}` : `${API_BASE}/admin/packages`;
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: {
+                'Authorization': `Bearer ${appToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('บันทึกข้อมูลแพ็กเกจลงระบบคลังสำเร็จ (ล้างหน่วยความจำแคชแล้ว)');
+            closePackageModal();
+            loadPackages();
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถบันทึกแพ็กเกจได้', true);
+        }
+    } catch (error) {
+        if (id) {
+            const index = allPackagesList.findIndex(item => item.id === id);
+            if (index !== -1) {
+                allPackagesList[index] = { ...allPackagesList[index], ...payload };
+                showToast('บันทึกข้อมูลแพ็กเกจสำเร็จ (โหมดจำลองออฟไลน์)');
+            }
+        } else {
+            const newId = `pkg${Date.now()}`;
+            allPackagesList.push({ id: newId, ...payload });
+            showToast('เพิ่มแพ็กเกจใหม่สำเร็จ (โหมดจำลองออฟไลน์)');
+        }
+        closePackageModal();
+        loadPackages();
+    }
+}
+
+async function deletePackageData(id) {
+    if (!confirm('ยืนยันที่จะลบแพ็กเกจนี้ออกจากคลังหรือไม่? (หน้ารวมลูกค้าจะรีเฟรชหน่วยความจำแคชทันที)')) return;
+
+    if (isOfflineMode) {
+        allPackagesList = allPackagesList.filter(item => item.id !== id);
+        showToast('ลบแพ็กเกจออกจากระบบสำเร็จ (โหมดจำลองออฟไลน์)');
+        loadPackages();
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/admin/packages/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${appToken}` }
+        });
+
+        if (res.ok) {
+            showToast('ลบแพ็กเกจออกจากระบบสำเร็จ');
+            loadPackages();
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถลบข้อมูลแพ็กเกจได้', true);
+        }
+    } catch (error) {
+        allPackagesList = allPackagesList.filter(item => item.id !== id);
+        showToast('ลบแพ็กเกจออกจากระบบสำเร็จ (โหมดจำลองออฟไลน์)');
+        loadPackages();
+    }
+}
+
+// -------------------------------------------------------------
+// จัดการอัปโหลดพอร์ตโฟลิโอ Signed URL (Storage Bypass Upload Flow)
+// -------------------------------------------------------------
+function handleFileSelect(file) {
+    if (!file) return;
+    
+    // ตรวจสอบขนาดไม่ให้เกิน 20MB
+    if (file.size > 20 * 1024 * 1024) {
+        showToast('ไฟล์ภาพมีขนาดใหญ่เกินกว่า 20MB', true);
+        clearFileSelection();
+        return;
+    }
+
+    selectedImageFile = file;
+    document.getElementById('preview-file-name').textContent = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+    document.getElementById('file-info-preview').classList.remove('d-none');
+    document.getElementById('upload-dropzone').classList.add('d-none');
+    
+    // ตั้งชื่อหัวข้อรูปภาพเริ่มต้น
+    document.getElementById('image-name').value = file.name.split('.')[0].replace(/[-_]/g, ' ');
+    document.getElementById('btn-submit-image').disabled = false;
+}
+
+function clearFileSelection() {
+    selectedImageFile = null;
+    document.getElementById('image-file-input').value = '';
+    document.getElementById('file-info-preview').classList.add('d-none');
+    document.getElementById('upload-dropzone').classList.remove('d-none');
+    document.getElementById('btn-submit-image').disabled = true;
+}
+
+async function handleImageUploadFlow(e) {
+    e.preventDefault();
+    if (!selectedImageFile) return;
+
+    const imageName = document.getElementById('image-name').value;
+    const category = document.getElementById('image-category').value;
+    const description = document.getElementById('image-description').value;
+    const submitBtn = document.getElementById('btn-submit-image');
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังอัปโหลดภาพ...';
+
+    if (isOfflineMode) {
+        // Local simulate file upload using temporary Object URL
+        const localImageUrl = URL.createObjectURL(selectedImageFile);
+        const newImg = {
+            id: `img-${Date.now()}`,
+            name: imageName,
+            category,
+            url: localImageUrl,
+            description
+        };
+        if (allPortfoliosList.length === 0) {
+            allPortfoliosList = [...fallbackPortfolios];
+        }
+        allPortfoliosList.unshift(newImg);
+        showToast('อัปเดตผลงานรูปใหม่จำลองสำเร็จ (โหมดจำลองออฟไลน์)');
+        clearFileSelection();
+        document.getElementById('image-description').value = '';
+        loadPortfolio();
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-arrow-up"></i> เริ่มอัปโหลดภาพด้วย Signed URL';
+        return;
+    }
+
+    try {
+        const fileName = selectedImageFile.name;
+        const contentType = selectedImageFile.type;
+
+        // ขั้นตอนที่ 1: ร้องขอ Signed URL จากเซิร์ฟเวอร์ Express (Bypass express upload)
+        const signedUrlRes = await fetch(
+            `${API_BASE}/admin/images/signed-url?fileName=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}`,
+            { headers: { 'Authorization': `Bearer ${appToken}` } }
+        );
+
+        if (!signedUrlRes.ok) {
+            throw new Error('ไม่สามารถรับ Signed URL คลังจัดเก็บได้');
+        }
+
+        const { uploadUrl, fileUrl } = await signedUrlRes.json();
+
+        // ขั้นตอนที่ 2: อัปโหลดรูปภาพตรงไปที่ Storage ปลายทาง (เช่น Firebase Storage) โดยใช้ Signed URL
+        // หากอยู่ในโหมด Mock/จำลอง เซิร์ฟเวอร์จะอัปโหลดไปยัง Mock Endpoint ชั่วคราว
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': contentType
+            },
+            body: selectedImageFile
+        });
+
+        if (!uploadRes.ok) {
+            throw new Error('การส่งรูปภาพตรงไปยังคลังจัดเก็บไฟล์ (Storage) ล้มเหลว');
+        }
+
+        // ขั้นตอนที่ 3: ส่งข้อมูลไปเซฟเป็น Metadata ในฐานข้อมูล Firestore
+        const metadataRes = await fetch(`${API_BASE}/admin/images`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${appToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: imageName,
+                category,
+                url: fileUrl,
+                description
+            })
+        });
+
+        if (metadataRes.ok) {
+            showToast('อัปโหลดผลงานพอร์ตโฟลิโอเข้าระบบและแปลงภาพสำเร็จ');
+            clearFileSelection();
+            document.getElementById('image-description').value = '';
+            loadPortfolio(); // รีโหลดแกลเลอรีภาพเพื่อแสดงรูปภาพใหม่ทันที
+        } else {
+            const err = await metadataRes.json();
+            throw new Error(err.message || 'ไม่สามารถเซฟข้อมูลภาพลงในฐานข้อมูลได้');
+        }
+
+    } catch (error) {
+        // Fallback to local
+        const localImageUrl = URL.createObjectURL(selectedImageFile);
+        const newImg = {
+            id: `img-${Date.now()}`,
+            name: imageName,
+            category,
+            url: localImageUrl,
+            description
+        };
+        if (allPortfoliosList.length === 0) {
+            allPortfoliosList = [...fallbackPortfolios];
+        }
+        allPortfoliosList.unshift(newImg);
+        showToast('อัปเดตผลงานรูปใหม่จำลองสำเร็จ (โหมดจำลองออฟไลน์)');
+        clearFileSelection();
+        document.getElementById('image-description').value = '';
+        loadPortfolio();
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-arrow-up"></i> เริ่มอัปโหลดภาพด้วย Signed URL';
+    }
+}
+
+// -------------------------------------------------------------
+// คลังภาพผลงานแบ่งหน้า (Portfolio Gallery System)
+// -------------------------------------------------------------
+async function loadPortfolio(isBack = false) {
+    const galleryGrid = document.getElementById('admin-gallery-grid');
+    const filterCat = document.getElementById('gallery-category-filter').value;
+    
+    galleryGrid.innerHTML = '<div class="text-center w-100" style="grid-column: 1/-1; padding: 50px 0;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i></div>';
+
+    let url = `${API_BASE}/images?limit=8`;
+    if (filterCat !== 'all') {
+        url += `&category=${filterCat}`;
+    }
+    if (galleryCursor) {
+        url += `&cursor=${galleryCursor}`;
+    }
+
+    try {
+        let data = [];
+        let cursor = null;
+        let hasMore = false;
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('API Error');
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                const resJson = await res.json();
+                data = resJson.data;
+                cursor = resJson.cursor;
+                hasMore = resJson.hasMore;
+                isOfflineMode = false;
+            } else {
+                throw new Error('Not JSON');
+            }
+        } catch (e) {
+            console.warn('Portfolio API unreachable, using local fallback:', e.message);
+            isOfflineMode = true;
+            if (allPortfoliosList.length === 0) {
+                allPortfoliosList = [...fallbackPortfolios];
+            }
+            
+            let filtered = allPortfoliosList;
+            if (filterCat !== 'all') {
+                filtered = allPortfoliosList.filter(img => img.category === filterCat);
+            }
+            
+            data = filtered;
+            cursor = null;
+            hasMore = false;
+        }
+        
+        renderPortfolioGrid(data);
+
+        // จัดการเปิด/ปิดปุ่มแบ่งหน้า (Pagination)
+        const prevBtn = document.getElementById('btn-prev-page');
+        const nextBtn = document.getElementById('btn-next-page');
+
+        // หากมี cursors ตกค้างใน Stack แสดงว่ามีหน้าก่อนหน้าให้ย้อนกลับ
+        prevBtn.disabled = prevCursorsStack.length === 0;
+
+        if (hasMore && cursor) {
+            nextBtn.disabled = false;
+            nextBtn.setAttribute('data-cursor', cursor);
+        } else {
+            nextBtn.disabled = true;
+            nextBtn.removeAttribute('data-cursor');
+        }
+
+        // คำนวณหน้าปัจจุบัน
+        const pageNum = prevCursorsStack.length + 1;
+        document.getElementById('page-indicator').textContent = `หน้าที่ ${pageNum}`;
+    } catch (error) {
+        galleryGrid.innerHTML = '<div class="text-center w-100" style="grid-column: 1/-1; color: #ef4444;">ไม่สามารถโหลดข้อมูลคลังภาพได้</div>';
+    }
+}
+
+function renderPortfolioGrid(list) {
+    const galleryGrid = document.getElementById('admin-gallery-grid');
+    galleryGrid.innerHTML = '';
+
+    if (!list || list.length === 0) {
+        galleryGrid.innerHTML = '<div class="text-center w-100" style="grid-column: 1/-1; padding: 50px 0; color: #6b7280;">ไม่มีผลงานพอร์ตโฟลิโอในโหมดนี้</div>';
+        return;
+    }
+
+    const eventTypeMap = {
+        wedding: 'งานแต่งงาน',
+        ordination: 'งานอุปสมบท',
+        graduation: 'งานรับปริญญา',
+        other: 'พอร์ตโฟลิโออื่นๆ'
+    };
+
+    list.forEach(img => {
+        const card = `
+            <div class="gallery-img-card">
+                <div class="img-thumbnail-container">
+                    <img src="${img.url}" alt="${img.name}" onerror="this.src='https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=500&q=80'">
+                    <span class="category-tag">${eventTypeMap[img.category] || img.category}</span>
+                    <button class="btn-delete-img" onclick="deletePortfolioImage('${img.id}')" title="ลบภาพนี้">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+                <div class="img-meta-info">
+                    <h4>${img.name}</h4>
+                    <p>${img.description || 'ไม่มีคำอธิบายภาพ'}</p>
+                </div>
+            </div>
+        `;
+        galleryGrid.innerHTML += card;
+    });
+}
+
+async function deletePortfolioImage(id) {
+    if (!confirm('ยืนยันที่จะลบรูปภาพนี้ออกจากแกลเลอรีหรือไม่? (ลบเฉพาะ metadata ในระบบทดลอง)')) return;
+
+    if (isOfflineMode) {
+        allPortfoliosList = allPortfoliosList.filter(img => img.id !== id);
+        showToast('ลบรูปภาพออกจากแกลเลอรีสำเร็จ (โหมดจำลองออฟไลน์)');
+        loadPortfolio();
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/admin/images/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${appToken}` }
+        });
+
+        if (res.ok) {
+            showToast('ลบรูปภาพออกจากแกลเลอรีสำเร็จ');
+            loadPortfolio(); // โหลดรูปภาพหน้านั้นๆ ใหม่
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถลบรูปภาพได้', true);
+        }
+    } catch (error) {
+        allPortfoliosList = allPortfoliosList.filter(img => img.id !== id);
+        showToast('ลบรูปภาพออกจากแกลเลอรีสำเร็จ (โหมดจำลองออฟไลน์)');
+        loadPortfolio();
+    }
+}
+
+// -------------------------------------------------------------
+// ส่วนแจ้งเตือนแบบป็อปอัพ (Toast Notifications Helper)
+// -------------------------------------------------------------
+function showToast(message, isError = false) {
+    const toast = document.getElementById('toast-notification');
+    const icon = document.getElementById('toast-icon');
+    const msg = document.getElementById('toast-message');
+
+    msg.textContent = message;
+    
+    if (isError) {
+        toast.classList.add('error');
+        icon.className = 'fa-solid fa-circle-xmark';
+    } else {
+        toast.classList.remove('error');
+        icon.className = 'fa-solid fa-circle-check';
+    }
+
+    toast.classList.add('active');
+
+    // ซ่อนข้อความหลังจากผ่านไป 4.5 วินาที
+    setTimeout(() => {
+        toast.classList.remove('active');
+    }, 4500);
+}

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShutterPixs - Admin CMS หลังบ้าน</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-body">
+    <!-- Top Glowing Gradient Bar -->
+    <div class="top-glow"></div>
+
+    <!-- Login Overlay Modal -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-card glass-card">
+            <div class="login-header">
+                <i class="fa-solid fa-lock-open logo-lock-icon"></i>
+                <h2>เข้าสู่ระบบหลังบ้าน</h2>
+                <p>ShutterPixs Admin CMS Portal</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="admin-email"><i class="fa-solid fa-envelope"></i> อีเมล</label>
+                    <input type="email" id="admin-email" placeholder="admin@shutterpixs.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="admin-password"><i class="fa-solid fa-key"></i> รหัสผ่าน</label>
+                    <input type="password" id="admin-password" placeholder="••••••••" required>
+                </div>
+                <div class="login-actions">
+                    <button type="submit" class="btn btn-primary btn-glow w-100"><i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบด้วย Firebase</button>
+                    <div class="divider"><span>หรือ</span></div>
+                    <button type="button" id="btn-mock-login" class="btn btn-outline w-100"><i class="fa-solid fa-user-gear"></i> ใช้รหัสผ่านจำลอง (Mock Login)</button>
+                </div>
+            </form>
+            <div class="login-footer-info">
+                <p><i class="fa-solid fa-circle-info"></i> ในระบบจำลอง (Mock Mode) ปุ่มด้านบนจะกำหนด Token ลิขสิทธิ์พิเศษให้อัตโนมัติ</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Container -->
+    <div id="admin-container" class="admin-container d-none">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="admin-sidebar glass-card">
+            <div class="sidebar-header">
+                <i class="fa-solid fa-camera-retro"></i>
+                <span>Shutter<span class="highlight">Pixs</span> <span class="badge-admin">CMS</span></span>
+            </div>
+            
+            <div class="admin-profile">
+                <div class="profile-avatar"><i class="fa-solid fa-user-tie"></i></div>
+                <div class="profile-info">
+                    <h4 id="admin-user-email">admin@shutterpixs.com</h4>
+                    <span>แอดมินระบบ</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-menu">
+                <a href="#dashboard" class="menu-link active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line"></i> แผงควบคุม (Dashboard)
+                </a>
+                <a href="#bookings" class="menu-link" data-tab="bookings">
+                    <i class="fa-solid fa-calendar-check"></i> คิวการจอง (Bookings)
+                    <span class="badge-count d-none" id="pending-badge">0</span>
+                </a>
+                <a href="#packages" class="menu-link" data-tab="packages">
+                    <i class="fa-solid fa-tags"></i> แพ็กเกจและโปรโมชั่น
+                </a>
+                <a href="#portfolio-manager" class="menu-link" data-tab="portfolio-manager">
+                    <i class="fa-solid fa-images"></i> ผลงานพอร์ตโฟลิโอ
+                </a>
+                <a href="/" class="menu-link" target="_blank">
+                    <i class="fa-solid fa-globe"></i> ไปหน้าหลักเว็ปไซต์
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="btn-logout" class="btn btn-outline w-100"><i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ</button>
+            </div>
+        </aside>
+
+        <!-- Main Panel View -->
+        <main class="admin-main-panel">
+            
+            <!-- Dashboard Tab View -->
+            <section id="tab-dashboard" class="tab-content active">
+                <div class="tab-header">
+                    <h2>แดชบอร์ดภาพรวมการทำงาน</h2>
+                    <p>สถิติการใช้งานและข้อมูลสรุปการจองคิวช่างภาพ</p>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon icon-blue"><i class="fa-solid fa-calendar-days"></i></div>
+                        <div class="stat-details">
+                            <span class="stat-label">ยอดจองทั้งหมด</span>
+                            <h3 id="stat-total-bookings">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon icon-yellow"><i class="fa-solid fa-hourglass-half"></i></div>
+                        <div class="stat-details">
+                            <span class="stat-label">รอการยืนยันคิว</span>
+                            <h3 id="stat-pending-bookings">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon icon-green"><i class="fa-solid fa-circle-check"></i></div>
+                        <div class="stat-details">
+                            <span class="stat-label">ยืนยันคิวแล้ว</span>
+                            <h3 id="stat-confirmed-bookings">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon icon-purple"><i class="fa-solid fa-box-open"></i></div>
+                        <div class="stat-details">
+                            <span class="stat-label">แพ็กเกจเปิดใช้งาน</span>
+                            <h3 id="stat-active-packages">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Logs / Quick Actions -->
+                <div class="dashboard-details-grid">
+                    <div class="dashboard-card glass-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-bolt"></i> คิวการจองล่าสุด</h3>
+                            <a href="#bookings" onclick="switchTab('bookings')" class="link-view-all">ดูทั้งหมด</a>
+                        </div>
+                        <div class="table-container-mini">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>รหัสการจอง</th>
+                                        <th>ลูกค้า</th>
+                                        <th>วันที่จัดงาน</th>
+                                        <th>สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-bookings-list">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card glass-card flex-center">
+                        <div class="quick-status-badge">
+                            <i class="fa-solid fa-shield-halved badge-shield-icon"></i>
+                            <h3>สถานะความปลอดภัยของระบบ</h3>
+                            <div class="status-indicator" id="auth-status-indicator">
+                                <span class="indicator-dot dot-green"></span>
+                                <span class="indicator-text">ทำงานอยู่ในโหมดจำลอง (Mock Authorization)</span>
+                            </div>
+                            <p class="status-desc">ระบบ CMS จะตรวจจับ Firebase Token ปลายทางโดยอัตโนมัติ หากไม่มีไฟล์ credentials จะสลับเป็น Cache Fallback และใช้ In-Memory Database</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bookings Tab View -->
+            <section id="tab-bookings" class="tab-content">
+                <div class="tab-header">
+                    <h2>จัดการคิวการจองของลูกค้า</h2>
+                    <p>ตรวจสอบ อัปเดตสถานะการมัดจำคิว และลบประวัติการนัดหมายช่างภาพ</p>
+                </div>
+
+                <div class="filter-bar glass-card">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="booking-search" placeholder="ค้นหาตามชื่อลูกค้า โทรศัพท์ หรือรหัสจอง...">
+                    </div>
+                    <div class="select-box">
+                        <select id="booking-status-filter">
+                            <option value="all">สถานะทั้งหมด</option>
+                            <option value="pending">รอการยืนยัน (Pending)</option>
+                            <option value="confirmed">มัดจำ/ยืนยันแล้ว (Confirmed)</option>
+                            <option value="completed">เสร็จสิ้นงาน (Completed)</option>
+                            <option value="cancelled">ยกเลิกแล้ว (Cancelled)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="dashboard-card glass-card no-padding">
+                    <div class="table-container">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>รหัสจอง</th>
+                                    <th>ชื่อลูกค้า</th>
+                                    <th>เบอร์โทร</th>
+                                    <th>ประเภทงาน</th>
+                                    <th>วันที่จัดงาน</th>
+                                    <th>แพ็กเกจ</th>
+                                    <th>ราคา</th>
+                                    <th>สถานะ</th>
+                                    <th class="text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="full-bookings-list">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Packages Tab View -->
+            <section id="tab-packages" class="tab-content">
+                <div class="tab-header-flex">
+                    <div class="tab-header">
+                        <h2>จัดการแพ็กเกจราคาและแคมเปญ</h2>
+                        <p>จัดการข้อมูลราคาตามฤดูกาล พร้อมระบบ Cache Invalidation ล้างหน่วยความจำแคชหน้าบ้านทันที</p>
+                    </div>
+                    <button class="btn btn-primary btn-glow" onclick="openPackageModal()"><i class="fa-solid fa-plus"></i> เพิ่มแพ็กเกจใหม่</button>
+                </div>
+
+                <div class="dashboard-card glass-card no-padding">
+                    <div class="table-container">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>ชื่อแพ็กเกจ</th>
+                                    <th>รายละเอียด</th>
+                                    <th>ราคา</th>
+                                    <th>ประเภท</th>
+                                    <th>วันที่เปิดบริการ</th>
+                                    <th>วันที่ปิดบริการ</th>
+                                    <th class="text-center">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-packages-list">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Portfolios Tab View -->
+            <section id="tab-portfolio-manager" class="tab-content">
+                <div class="tab-header">
+                    <h2>จัดการอัปโหลดภาพพอร์ตโฟลิโอ (Portfolio Grid)</h2>
+                    <p>ระบบ Direct-to-Storage Upload: ส่ง Signed URL และอัปโหลดตรงไปที่ Firebase Storage โดยไม่ผ่านเซิร์ฟเวอร์ Express เพื่อประสิทธิภาพสูงสุด</p>
+                </div>
+
+                <div class="portfolio-manager-layout">
+                    <!-- Image Upload form -->
+                    <div class="dashboard-card glass-card uploader-card">
+                        <h3><i class="fa-solid fa-cloud-arrow-up"></i> อัปโหลดรูปภาพใหม่</h3>
+                        <form id="upload-image-form">
+                            <!-- Drag and drop zone -->
+                            <div class="upload-dropzone" id="upload-dropzone">
+                                <i class="fa-solid fa-image dropzone-icon"></i>
+                                <p>ลากรูปภาพมาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์</p>
+                                <span class="dropzone-sub">รองรับ JPG, PNG, WEBP (ขนาดสูงสุด 20MB)</span>
+                                <input type="file" id="image-file-input" accept="image/*" class="d-none">
+                            </div>
+
+                            <div id="file-info-preview" class="file-info-preview d-none">
+                                <span id="preview-file-name">wedding.jpg</span>
+                                <button type="button" id="btn-remove-preview" class="btn-close"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+
+                            <div class="form-group mt-3">
+                                <label for="image-name">ชื่อรูปภาพ / หัวข้อผลงาน</label>
+                                <input type="text" id="image-name" placeholder="เช่น บรรยากาศวันฉลองมงคลสมรส" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="image-category">หมวดหมู่</label>
+                                <select id="image-category" required>
+                                    <option value="wedding">งานแต่งงาน (Wedding)</option>
+                                    <option value="ordination">งานบวช (Ordination)</option>
+                                    <option value="graduation">งานรับปริญญา (Graduation)</option>
+                                    <option value="other">งานอื่นๆ / Portrait</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="image-description">คำอธิบายภาพ (รายละเอียดสั้น)</label>
+                                <textarea id="image-description" rows="3" placeholder="ระบุคอนเซ็ปต์การถ่ายภาพ แสง หรือสถานที่..."></textarea>
+                            </div>
+
+                            <button type="submit" id="btn-submit-image" class="btn btn-primary btn-glow w-100" disabled>
+                                <i class="fa-solid fa-circle-arrow-up"></i> เริ่มอัปโหลดภาพด้วย Signed URL
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Gallery Grid -->
+                    <div class="dashboard-card glass-card gallery-card">
+                        <div class="gallery-header-bar">
+                            <h3>คลังภาพผลงานพอร์ตโฟลิโอ</h3>
+                            <div class="select-box-mini">
+                                <select id="gallery-category-filter">
+                                    <option value="all">หมวดทั้งหมด</option>
+                                    <option value="wedding">งานแต่งงาน</option>
+                                    <option value="ordination">งานบวช</option>
+                                    <option value="graduation">งานรับปริญญา</option>
+                                    <option value="other">งานอื่นๆ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Paginated Grid -->
+                        <div class="admin-gallery-grid" id="admin-gallery-grid">
+                            <!-- Dynamic images cards -->
+                        </div>
+
+                        <!-- Pagination Footer -->
+                        <div class="gallery-pagination-bar">
+                            <button id="btn-prev-page" class="btn btn-outline" disabled><i class="fa-solid fa-angle-left"></i> ย้อนกลับ</button>
+                            <span id="page-indicator">หน้าที่ 1</span>
+                            <button id="btn-next-page" class="btn btn-outline" disabled>ถัดไป <i class="fa-solid fa-angle-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Package Editor Dialog Modal -->
+    <div id="package-modal" class="modal-overlay">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3 id="package-modal-title">เพิ่มแพ็กเกจการจองคิวใหม่</h3>
+                <button class="btn-close" onclick="closePackageModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="package-form">
+                <input type="hidden" id="package-id-field">
+                
+                <div class="form-group">
+                    <label for="pkg-name">ชื่อแพ็กเกจ</label>
+                    <input type="text" id="pkg-name" placeholder="เช่น Wedding Standard Half-Day" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pkg-price">ราคา (บาท)</label>
+                    <input type="number" id="pkg-price" placeholder="15000" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pkg-description">รายละเอียดบริการ (คั่นบรรทัดได้)</label>
+                    <textarea id="pkg-description" rows="4" placeholder="เช่น ถ่ายภาพพิธีหมั้น 4 ชั่วโมง, ส่งไฟล์ JPG โทนสีพรีเมียม..." required></textarea>
+                </div>
+
+                <div class="checkbox-group form-group">
+                    <input type="checkbox" id="pkg-is-seasonal">
+                    <label for="pkg-is-seasonal"><b>แพ็กเกจโปรโมชั่นตามฤดูกาล / เทศกาล (Seasonal Package)</b></label>
+                </div>
+
+                <div id="seasonal-dates-container" class="form-row d-none">
+                    <div class="form-col">
+                        <label for="pkg-start-date">วันที่เริ่มโปรโมชั่น</label>
+                        <input type="date" id="pkg-start-date">
+                    </div>
+                    <div class="form-col">
+                        <label for="pkg-end-date">วันที่สิ้นสุดโปรโมชั่น</label>
+                        <input type="date" id="pkg-end-date">
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closePackageModal()">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary btn-glow"><i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลคลัง</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-notification" class="toast-notification">
+        <i id="toast-icon" class="fa-solid fa-circle-check"></i>
+        <div class="toast-content">
+            <span id="toast-message">บันทึกคิวการจองสำเร็จ</span>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (v10.8.0) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        // Firebase Configuration (from user config)
+        const firebaseConfig = {
+            apiKey: "AIzaSyA9v9ABQoaXe1HRLEjRb0xZFsOdJQ7eGj0",
+            authDomain: "shutterpixs-1091a.firebaseapp.com",
+            projectId: "shutterpixs-1091a",
+            storageBucket: "shutterpixs-1091a.firebasestorage.app",
+            messagingSenderId: "774827608148",
+            appId: "1:774827608148:web:d582bec487057dcf0405c1",
+            measurementId: "G-JMQVZB3P9J"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Expose to window so admin.js can access it
+        window.firebaseAuthInstance = auth;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.firebaseSignOut = signOut;
+    </script>
+
+    <!-- Scripts -->
+    <script src="admin.js?v=2"></script>
+</body>
+</html>
