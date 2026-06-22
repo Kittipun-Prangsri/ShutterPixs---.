@@ -11,6 +11,7 @@ let galleryCursor = null;
 let prevCursorsStack = []; // สำหรับบันทึก Cursor ของหน้าก่อนหน้า
 let selectedImageFile = null;
 let isOfflineMode = false;
+let statsInterval = null;
 
 // Mock Fallback Data
 const fallbackPackages = [
@@ -96,6 +97,18 @@ function showAdminPanel() {
     // โหลดข้อมูลเข้าแดชบอร์ด
     loadDashboardStats();
     switchTab(currentTab);
+
+    // เริ่มระบบตรวจสอบข้อมูลและแจ้งเตือนอัตโนมัติ (Polling) ทุกๆ 15 วินาที
+    if (statsInterval) clearInterval(statsInterval);
+    statsInterval = setInterval(() => {
+        if (appToken) {
+            loadDashboardStats();
+            // รีโหลดตารางหากกำลังแสดงผลตารางคิวการจองอยู่ เพื่อให้เห็นอัปเดตแบบเรียลไทม์
+            if (currentTab === 'bookings') {
+                loadBookings();
+            }
+        }
+    }, 15000);
 }
 
 // -------------------------------------------------------------
@@ -225,6 +238,9 @@ function setupEventListeners() {
             loadPortfolio();
         }
     });
+
+    // เริ่มต้นระบบจัดการ UI การแจ้งเตือน
+    setupNotificationUI();
 }
 
 // -------------------------------------------------------------
@@ -280,6 +296,10 @@ async function handleFirebaseLogin(e) {
 }
 
 async function handleLogout() {
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+    }
     try {
         if (window.firebaseAuthInstance && window.firebaseSignOut) {
             await window.firebaseSignOut(window.firebaseAuthInstance);
@@ -343,6 +363,10 @@ async function loadDashboardStats() {
         }
 
         allBookingsList = Array.isArray(bookings) ? bookings : [];
+        
+        // ตรวจสอบและแจ้งเตือนการจองคิวใหม่
+        checkNewBookings(allBookingsList);
+
         const activePackagesCount = Array.isArray(packages) ? packages.length : 0;
 
         // คำนวณสถิติ
@@ -1160,3 +1184,238 @@ function showToast(message, isError = false) {
         toast.classList.remove('active');
     }, 4500);
 }
+
+// -------------------------------------------------------------
+// ระบบจัดการแจ้งเตือนแบบเรียลไทม์ (Real-Time Notification System)
+// -------------------------------------------------------------
+
+function checkNewBookings(incomingBookings) {
+    if (!appToken) return; // ทำงานเฉพาะเมื่อแอดมินเข้าสู่ระบบแล้วเท่านั้น
+    
+    const seenBookings = JSON.parse(localStorage.getItem('shutterpixs_seen_bookings')) || [];
+    const initialized = localStorage.getItem('shutterpixs_noti_init');
+    
+    const isFirstLoad = !initialized;
+    const newBookingsFound = [];
+    
+    incomingBookings.forEach(booking => {
+        const isSeen = seenBookings.includes(booking.id);
+        if (!isSeen) {
+            // หากเป็นการโหลดครั้งแรกของเบราว์เซอร์ ให้คัดกรองเฉพาะสถานะ pending เก็บไว้เป็นแจ้งเตือนใหม่
+            // นอกเหนือจากนั้น (เช่น confirmed/completed/cancelled) ให้ทำเครื่องหมายว่าเห็นแล้วโดยอัตโนมัติ
+            if (!isFirstLoad || booking.status === 'pending') {
+                newBookingsFound.push(booking);
+            } else {
+                seenBookings.push(booking.id);
+            }
+        }
+    });
+    
+    if (isFirstLoad) {
+        localStorage.setItem('shutterpixs_noti_init', 'true');
+        localStorage.setItem('shutterpixs_seen_bookings', JSON.stringify(seenBookings));
+    }
+    
+    // หากตรวจสอบพบรายการจองใหม่และไม่ใช่การเข้าสู่ระบบครั้งแรกสุด ให้เล่นเสียงเตือนและแสดง Toast
+    if (newBookingsFound.length > 0 && !isFirstLoad) {
+        // เล่นเสียงแจ้งเตือนแบบสังเคราะห์ (Web Audio API Chime)
+        playNotificationSound();
+        
+        // แสดงป๊อปอัพแจ้งเตือนรายการใหม่
+        newBookingsFound.forEach((b, index) => {
+            if (index < 3) { // ป้องกันหน้าต่างป๊อปอัพเด้งซ้อนรบกวนมากเกินไป
+                const eventTypesThai = {
+                    wedding: 'งานแต่งงาน',
+                    ordination: 'งานอุปสมบท',
+                    graduation: 'งานรับปริญญา',
+                    other: 'งานบุคคล/อื่นๆ'
+                };
+                const typeText = eventTypesThai[b.event_type] || b.event_type;
+                showToast(`🔔 มีการจองใหม่: คุณ ${b.customer_name} (${typeText})`);
+            }
+        });
+    }
+    
+    // อัปเดตรายการในหน้าต่างแจ้งเตือน (Dropdown List)
+    updateNotificationDropdown(incomingBookings, seenBookings);
+}
+
+function updateNotificationDropdown(incomingBookings, seenBookings) {
+    const listContainer = document.getElementById('notification-items-list');
+    const badge = document.getElementById('notification-badge');
+    
+    if (!listContainer || !badge) return;
+    
+    // คัดเลือกรายการที่ยังไม่ได้อ่าน (ไม่ได้อยู่ในรายการ seenBookings)
+    const unreadBookings = incomingBookings.filter(b => !seenBookings.includes(b.id));
+    
+    // อัปเดตตัวเลขแจ้งเตือนสีแดง (Notification Badge)
+    if (unreadBookings.length > 0) {
+        badge.textContent = unreadBookings.length;
+        badge.classList.remove('d-none');
+    } else {
+        badge.classList.add('d-none');
+    }
+    
+    // กรณีไม่มีการแจ้งเตือนตกค้าง
+    if (unreadBookings.length === 0) {
+        listContainer.innerHTML = `
+            <div class="no-notifications">
+                <i class="fa-solid fa-bell-slash"></i>
+                <p>ไม่มีการแจ้งเตือนใหม่</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const eventTypeMap = {
+        wedding: 'งานแต่งงาน',
+        ordination: 'งานอุปสมบท',
+        graduation: 'งานรับปริญญา',
+        other: 'งานอื่นๆ/Portrait'
+    };
+    
+    const iconMap = {
+        wedding: 'fa-heart',
+        ordination: 'fa-dharmachakra',
+        graduation: 'fa-graduation-cap',
+        other: 'fa-camera'
+    };
+    
+    listContainer.innerHTML = '';
+    
+    // แสดงรายการแจ้งเตือนล่าสุด
+    unreadBookings.forEach(b => {
+        const dateObj = new Date(b.created_at || Date.now());
+        const timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + 
+                        ' ' + dateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+        
+        const itemHtml = `
+            <div class="notification-item unread" onclick="handleNotificationClick('${b.id}')">
+                <div class="noti-icon ${b.event_type}">
+                    <i class="fa-solid ${iconMap[b.event_type] || 'fa-bell'}"></i>
+                </div>
+                <div class="noti-content">
+                    <h5 class="noti-title">คุณ ${b.customer_name}</h5>
+                    <p class="noti-desc">จองคิว${eventTypeMap[b.event_type] || b.event_type} (${b.package_name})</p>
+                    <span class="noti-time"><i class="fa-regular fa-clock"></i> ${timeStr}</span>
+                </div>
+            </div>
+        `;
+        listContainer.innerHTML += itemHtml;
+    });
+}
+
+function handleNotificationClick(id) {
+    // 1. ทำเครื่องหมายรายการนี้ว่าอ่านแล้ว
+    const seenBookings = JSON.parse(localStorage.getItem('shutterpixs_seen_bookings')) || [];
+    if (!seenBookings.includes(id)) {
+        seenBookings.push(id);
+        localStorage.setItem('shutterpixs_seen_bookings', JSON.stringify(seenBookings));
+    }
+    
+    // 2. รีเฟรชข้อมูลใน Dashboard และ Dropdown
+    loadDashboardStats();
+    
+    // 3. สวิตช์ไปที่หน้าจัดการการจองคิว
+    switchTab('bookings');
+    
+    // 4. พิมพ์รหัสการจองในช่องค้นหาเพื่อกรองข้อมูลและขยายรายละเอียดทันที
+    const searchInput = document.getElementById('booking-search');
+    const statusFilter = document.getElementById('booking-status-filter');
+    
+    if (searchInput && statusFilter) {
+        searchInput.value = id;
+        statusFilter.value = 'all'; // กรองสถานะทั้งหมดเพื่อความถูกต้อง
+        filterBookingsTable();
+    }
+    
+    // 5. ปิดหน้าต่าง Dropdown ลง
+    const dropdown = document.getElementById('notification-dropdown');
+    if (dropdown) dropdown.classList.remove('active');
+}
+
+function clearAllNotifications() {
+    const seenBookings = JSON.parse(localStorage.getItem('shutterpixs_seen_bookings')) || [];
+    
+    // บันทึกรหัสการจองทั้งหมดลงรายการเห็นแล้วเพื่อเคลียร์กล่องแจ้งเตือน
+    allBookingsList.forEach(b => {
+        if (!seenBookings.includes(b.id)) {
+            seenBookings.push(b.id);
+        }
+    });
+    
+    localStorage.setItem('shutterpixs_seen_bookings', JSON.stringify(seenBookings));
+    loadDashboardStats();
+    showToast('อ่านการแจ้งเตือนทั้งหมดเรียบร้อยแล้ว');
+}
+
+function setupNotificationUI() {
+    const bellBtn = document.getElementById('btn-notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    const clearBtn = document.getElementById('btn-clear-notifications');
+    
+    if (bellBtn && dropdown) {
+        // กดกระดิ่งเพื่อเปิด/ปิดหน้าต่างแจ้งเตือน
+        bellBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('active');
+        });
+        
+        // ปิดหน้าต่างเมื่อกดพื้นที่ข้างนอก
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
+                dropdown.classList.remove('active');
+            }
+        });
+    }
+    
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            clearAllNotifications();
+        });
+    }
+}
+
+/**
+ * เล่นเสียงแจ้งเตือนสไตล์พรีเมียม (Double Chime Bell) ด้วย Web Audio API สังเคราะห์ความถี่คลื่นเสียงขึ้นมาโดยตรง
+ */
+function playNotificationSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // โน้ตตัวแรก (E5)
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
+        gain1.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start();
+        osc1.stop(audioCtx.currentTime + 0.35);
+        
+        // โน้ตตัวสอง (A5) เล่นตามมาหลังจากผ่านไป 130 มิลลิวินาที
+        setTimeout(() => {
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(880.00, audioCtx.currentTime); // A5
+            gain2.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start();
+            osc2.stop(audioCtx.currentTime + 0.5);
+        }, 130);
+    } catch (e) {
+        console.warn('Audio Context not allowed or supported by this browser:', e);
+    }
+}
+
+// Expose handleNotificationClick to global window object
+window.handleNotificationClick = handleNotificationClick;

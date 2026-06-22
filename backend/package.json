@@ -8,6 +8,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@line/bot-sdk": "^9.4.0",
     "compression": "^1.8.1",
     "cors": "^2.8.5",

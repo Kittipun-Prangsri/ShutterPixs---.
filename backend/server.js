@@ -5,6 +5,7 @@ const path = require('path');
 const compression = require('compression');
 const admin = require('firebase-admin');
 const line = require('@line/bot-sdk');
+const aiService = require('./services/aiService');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -122,8 +123,13 @@ if (lineConfig.channelAccessToken && lineConfig.channelSecret && !lineConfig.cha
   console.log('⚠️  LINE features running in Demo mode. Configure LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET in .env for actual bot responses.');
 }
 
-// Set JSON parsers for standard routes
-app.use(express.json());
+// Set JSON parsers for standard routes (skip for LINE webhook to prevent signature verification errors)
+app.use((req, res, next) => {
+  if (req.path === '/api/webhook/line') {
+    return next();
+  }
+  express.json()(req, res, next);
+});
 
 // Register High-Performance CMS API routes for Images, Packages, and Bookings
 const imageRoutes = require('./routes/imageRoutes');
@@ -380,11 +386,15 @@ async function notifyAdminNewBooking(booking) {
 }
 
 // LINE OA Webhook endpoint
-app.post('/api/webhook/line', line.middleware({ channelSecret: lineConfig.channelSecret }), async (req, res) => {
-  if (useLineMock) {
-    console.log('Received Line Webhook (DEMO mode):', JSON.stringify(req.body, null, 2));
-    return res.sendStatus(200);
-  }
+app.post('/api/webhook/line',
+  (lineConfig.channelSecret && !lineConfig.channelSecret.includes('placeholder'))
+    ? line.middleware({ channelSecret: lineConfig.channelSecret })
+    : express.json(), // Parse body normally if signature check is bypassed
+  async (req, res) => {
+    if (useLineMock) {
+      console.log('Received Line Webhook (DEMO mode):', JSON.stringify(req.body, null, 2));
+      return res.sendStatus(200);
+    }
 
   try {
     const events = req.body.events;
@@ -559,205 +569,31 @@ async function handleLineEvent(event) {
     }
   }
 
-  // Default welcome response
-  return lineClient.replyMessage({
-    replyToken: replyToken,
-    messages: [
-      {
-        type: 'text',
-        text: 'สวัสดีครับ ยินดีต้อนรับสู่ ShutterPixs 📸✨\n\nหากคุณจองบริการบนเว็ปไซต์แล้ว กรุณาส่ง "รหัสการจอง" (เช่น: SP-20260622-123) เข้ามาในแชทนี้เพื่อยืนยันคิวได้เลยครับ!\n\nหรือเลือกดูแพ็กเกจของเราด้านล่างนี้เลย 👇'
-      },
-      {
-        type: 'flex',
-        altText: 'แพ็กเกจบริการจาก ShutterPixs',
-        contents: {
-          type: 'carousel',
-          contents: [
-            {
-              type: 'bubble',
-              hero: {
-                type: 'image',
-                url: 'https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80',
-                size: 'full',
-                aspectRatio: '20:13',
-                aspectMode: 'cover'
-              },
-              body: {
-                type: 'box',
-                layout: 'vertical',
-                contents: [
-                  { type: 'text', text: 'Wedding Ceremony', weight: 'bold', size: 'xl', color: '#F06292' },
-                  { type: 'text', text: 'บริการถ่ายภาพงานแต่งงานและพรีเวดดิ้ง เก็บทุกโมเมนต์แห่งความรัก', size: 'sm', color: '#888888', wrap: true, margin: 'sm' },
-                  { type: 'separator', margin: 'md', color: '#eeeeee' },
-                  {
-                    type: 'box',
-                    layout: 'vertical',
-                    margin: 'md',
-                    spacing: 'sm',
-                    contents: [
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#F06292' },
-                          { type: 'text', text: 'ช่างภาพหลัก / แคนดิด', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      },
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#F06292' },
-                          { type: 'text', text: 'ปรับโทนสีสวยงามทุกรูป', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              footer: {
-                type: 'box',
-                layout: 'vertical',
-                spacing: 'sm',
-                contents: [
-                  {
-                    type: 'button',
-                    style: 'primary',
-                    height: 'sm',
-                    color: '#F06292',
-                    action: {
-                      type: 'uri',
-                      label: 'ดูผลงาน / จองคิว',
-                      uri: 'https://shutterpixs59.web.app/'
-                    }
-                  }
-                ],
-                flex: 0
-              }
-            },
-            {
-              type: 'bubble',
-              hero: {
-                type: 'image',
-                url: 'https://images.unsplash.com/photo-1582650517303-052edb20c62b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80',
-                size: 'full',
-                aspectRatio: '20:13',
-                aspectMode: 'cover'
-              },
-              body: {
-                type: 'box',
-                layout: 'vertical',
-                contents: [
-                  { type: 'text', text: 'Ordination Ceremony', weight: 'bold', size: 'xl', color: '#E67E22' },
-                  { type: 'text', text: 'บริการถ่ายภาพงานอุปสมบท บันทึกภาพความทรงจำอันเป็นมงคล', size: 'sm', color: '#888888', wrap: true, margin: 'sm' },
-                  { type: 'separator', margin: 'md', color: '#eeeeee' },
-                  {
-                    type: 'box',
-                    layout: 'vertical',
-                    margin: 'md',
-                    spacing: 'sm',
-                    contents: [
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#E67E22' },
-                          { type: 'text', text: 'ถ่ายภาพพิธีการครบถ้วน', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      },
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#E67E22' },
-                          { type: 'text', text: 'ส่งงานรวดเร็ว พร้อมกรอบรูป', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              footer: {
-                type: 'box',
-                layout: 'vertical',
-                spacing: 'sm',
-                contents: [
-                  {
-                    type: 'button',
-                    style: 'primary',
-                    height: 'sm',
-                    color: '#E67E22',
-                    action: {
-                      type: 'uri',
-                      label: 'ดูผลงาน / จองคิว',
-                      uri: 'https://shutterpixs59.web.app/'
-                    }
-                  }
-                ],
-                flex: 0
-              }
-            },
-            {
-              type: 'bubble',
-              hero: {
-                type: 'image',
-                url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80',
-                size: 'full',
-                aspectRatio: '20:13',
-                aspectMode: 'cover'
-              },
-              body: {
-                type: 'box',
-                layout: 'vertical',
-                contents: [
-                  { type: 'text', text: 'Funeral Ceremony', weight: 'bold', size: 'xl', color: '#222222' },
-                  { type: 'text', text: 'บริการถ่ายภาพงานฌาปนกิจ บันทึกภาพด้วยความสุภาพและสำรวม', size: 'sm', color: '#888888', wrap: true, margin: 'sm' },
-                  { type: 'separator', margin: 'md', color: '#eeeeee' },
-                  {
-                    type: 'box',
-                    layout: 'vertical',
-                    margin: 'md',
-                    spacing: 'sm',
-                    contents: [
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#222222' },
-                          { type: 'text', text: 'ทีมงานมืออาชีพ แต่งกายสุภาพ', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      },
-                      {
-                        type: 'box', layout: 'baseline', spacing: 'sm',
-                        contents: [
-                          { type: 'text', text: '✔', size: 'sm', flex: 1, color: '#222222' },
-                          { type: 'text', text: 'ส่งมอบภาพถ่ายด้วยความรวดเร็ว', wrap: true, color: '#444444', size: 'sm', flex: 7 }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              footer: {
-                type: 'box',
-                layout: 'vertical',
-                spacing: 'sm',
-                contents: [
-                  {
-                    type: 'button',
-                    style: 'primary',
-                    height: 'sm',
-                    color: '#222222',
-                    action: {
-                      type: 'uri',
-                      label: 'ดูผลงาน / จองคิว',
-                      uri: 'https://shutterpixs59.web.app/'
-                    }
-                  }
-                ],
-                flex: 0
-              }
-            }
-          ]
+  // Default welcome response (handled by Gemini AI)
+  try {
+    const aiReply = await aiService.generateResponse(userText);
+    return lineClient.replyMessage({
+      replyToken: replyToken,
+      messages: [
+        {
+          type: 'text',
+          text: aiReply
         }
-      }
-    ]
-  });
+      ]
+    });
+  } catch (aiErr) {
+    console.error("AI reply error, falling back to static default:", aiErr.message);
+    // Static Fallback
+    return lineClient.replyMessage({
+      replyToken: replyToken,
+      messages: [
+        {
+          type: 'text',
+          text: 'สวัสดีครับ ยินดีต้อนรับสู่ ShutterPixs 📸✨\n\nหากคุณจองบริการบนเว็ปไซต์แล้ว กรุณาส่ง "รหัสการจอง" (เช่น: SP-20260622-123) เข้ามาในแชทนี้เพื่อยืนยันคิวได้เลยครับ!\n\nหรือสอบถามข้อมูลบริการและแพ็กเกจถ่ายภาพได้เลยครับ แอดมิน AI และทีมงานยินดีให้บริการครับ 😊'
+        }
+      ]
+    });
+  }
 }
 
 // Start Server
