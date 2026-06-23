@@ -81,16 +81,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Change nav style on scroll
+    // Change nav style on scroll + show/hide scroll FAB
+    const scrollNavFab = document.getElementById('scroll-nav-fab');
+    const btnScrollTop = document.getElementById('btn-scroll-top');
+    const btnScrollFooter = document.getElementById('btn-scroll-footer');
+    const pageFooter = document.querySelector('footer');
+
     window.addEventListener('scroll', () => {
-        if (window.scrollY > 50) {
+        const scrolled = window.scrollY;
+
+        // Navbar compact style
+        if (scrolled > 50) {
             navbar.style.padding = '0.5rem 0';
             navbar.classList.add('scrolled');
         } else {
             navbar.style.padding = '0';
             navbar.classList.remove('scrolled');
         }
+
+        // Show FAB after user scrolls 200px
+        if (scrollNavFab) {
+            if (scrolled > 200) {
+                scrollNavFab.classList.add('visible');
+            } else {
+                scrollNavFab.classList.remove('visible');
+            }
+        }
     });
+
+    // Scroll to top
+    if (btnScrollTop) {
+        btnScrollTop.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    // Scroll to footer
+    if (btnScrollFooter && pageFooter) {
+        btnScrollFooter.addEventListener('click', () => {
+            pageFooter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
 
     // Set today as minimum date for booking
     if (eventDateInput) {
