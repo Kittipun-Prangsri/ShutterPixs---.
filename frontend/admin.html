@@ -27,8 +27,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="admin.css?v=5">
 </head>
 <body class="admin-body">
     <!-- Top Glowing Gradient Bar -->
@@ -509,6 +509,54 @@
         </div>
     </div>
 
+    <!-- Image Editor Dialog Modal -->
+    <div id="image-modal" class="modal-overlay">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3 id="image-modal-title">แก้ไขรายละเอียดผลงาน</h3>
+                <button class="btn-close" onclick="closeImageModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="image-edit-form">
+                <input type="hidden" id="image-id-field">
+                
+                <div class="form-group">
+                    <label for="edit-image-name">ชื่อรูปภาพ / หัวข้อผลงาน</label>
+                    <input type="text" id="edit-image-name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-image-category">หมวดหมู่</label>
+                    <select id="edit-image-category" required>
+                        <option value="wedding">งานแต่งงาน (Wedding)</option>
+                        <option value="ordination">งานบวช (Ordination)</option>
+                        <option value="graduation">งานรับปริญญา (Graduation)</option>
+                        <option value="other">งานอื่นๆ / Portrait</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>รูปภาพปัจจุบัน</label>
+                    <img id="edit-image-preview" src="" style="max-width: 100%; max-height: 120px; display: block; margin-top: 5px; border-radius: 8px; border: 1px solid var(--border-color); object-fit: cover;">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-image-file-input"><i class="fa-solid fa-cloud-arrow-up"></i> เปลี่ยนไฟล์รูปภาพ (ปล่อยว่างหากไม่ต้องการแก้ไขรูป)</label>
+                    <input type="file" id="edit-image-file-input" accept="image/*" style="padding: 5px;">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-image-description">คำอธิบายภาพ (รายละเอียดสั้น)</label>
+                    <textarea id="edit-image-description" rows="4" placeholder="ระบุคอนเซ็ปต์การถ่ายภาพ แสน หรือสถานที่..."></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeImageModal()">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary btn-glow"><i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Notification Toast -->
     <div id="toast-notification" class="toast-notification">
         <i id="toast-icon" class="fa-solid fa-circle-check"></i>
@@ -544,6 +592,6 @@
     </script>
 
     <!-- Scripts -->
-    <script src="admin.js?v=2"></script>
+    <script src="admin.js?v=5"></script>
 </body>
 </html>

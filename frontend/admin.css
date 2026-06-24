@@ -945,14 +945,40 @@
     cursor: pointer;
     transition: all 0.2s ease;
     opacity: 0;
+    z-index: 10;
 }
 
-.gallery-img-card:hover .btn-delete-img {
+.btn-edit-img {
+    position: absolute;
+    top: 10px;
+    right: 44px;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(217, 119, 6, 0.9);
+    border: none;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0;
+    z-index: 10;
+}
+
+.gallery-img-card:hover .btn-delete-img,
+.gallery-img-card:hover .btn-edit-img {
     opacity: 1;
 }
 
 .btn-delete-img:hover {
     background: #ef4444;
+    transform: scale(1.05);
+}
+
+.btn-edit-img:hover {
+    background: #fbbf24;
     transform: scale(1.05);
 }
 

@@ -203,6 +203,7 @@ function setupEventListeners() {
 
     document.getElementById('package-form').addEventListener('submit', savePackageData);
     document.getElementById('booking-form').addEventListener('submit', saveBookingData);
+    document.getElementById('image-edit-form').addEventListener('submit', savePortfolioImageData);
 
     // การลากและวางอัปเดตรูปภาพ (Drag & Drop Zone)
     const dropzone = document.getElementById('upload-dropzone');
@@ -1226,6 +1227,9 @@ function renderPortfolioGrid(list) {
                 <div class="img-thumbnail-container">
                     <img src="${img.url}" alt="${img.name}" onerror="this.src='https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=500&q=80'">
                     <span class="category-tag">${eventTypeMap[img.category] || img.category}</span>
+                    <button class="btn-edit-img" onclick="editPortfolioImage('${img.id}')" title="แก้ไขภาพนี้">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
                     <button class="btn-delete-img" onclick="deletePortfolioImage('${img.id}')" title="ลบภาพนี้">
                         <i class="fa-solid fa-trash"></i>
                     </button>
@@ -1269,6 +1273,171 @@ async function deletePortfolioImage(id) {
         loadPortfolio();
     }
 }
+
+function closeImageModal() {
+    document.getElementById('image-modal').classList.remove('active');
+}
+
+async function editPortfolioImage(id) {
+    let img = null;
+    if (Array.isArray(allPortfoliosList) && allPortfoliosList.length > 0) {
+        img = allPortfoliosList.find(item => item.id === id);
+    }
+    
+    if (!img) {
+        img = fallbackPortfolios.find(item => item.id === id);
+    }
+    
+    if (!img) {
+        showToast('ไม่พบข้อมูลรูปภาพที่ต้องการแก้ไข', true);
+        return;
+    }
+
+    document.getElementById('image-id-field').value = img.id;
+    document.getElementById('edit-image-name').value = img.name || img.title || '';
+    document.getElementById('edit-image-category').value = img.category || 'wedding';
+    document.getElementById('edit-image-description').value = img.description || '';
+    
+    // Set preview image and clear input file selector
+    const previewEl = document.getElementById('edit-image-preview');
+    if (previewEl) {
+        previewEl.src = img.url || img.image_url || '';
+    }
+    const fileInputEl = document.getElementById('edit-image-file-input');
+    if (fileInputEl) {
+        fileInputEl.value = '';
+    }
+
+    document.getElementById('image-modal').classList.add('active');
+}
+
+async function savePortfolioImageData(e) {
+    e.preventDefault();
+    const id = document.getElementById('image-id-field').value;
+    const name = document.getElementById('edit-image-name').value;
+    const category = document.getElementById('edit-image-category').value;
+    const description = document.getElementById('edit-image-description').value;
+
+    const fileInputEl = document.getElementById('edit-image-file-input');
+    const newFile = fileInputEl ? fileInputEl.files[0] : null;
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึกข้อมูล...';
+
+    const payload = {
+        name,
+        category,
+        description
+    };
+
+    try {
+        if (newFile) {
+            // Check size max 20MB
+            if (newFile.size > 20 * 1024 * 1024) {
+                showToast('ไฟล์ภาพมีขนาดใหญ่เกินกว่า 20MB', true);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                return;
+            }
+
+            if (isOfflineMode) {
+                payload.url = URL.createObjectURL(newFile);
+            } else {
+                // Upload flow using signed URL
+                const signedUrlRes = await fetch(
+                    `${API_BASE}/admin/images/signed-url?fileName=${encodeURIComponent(newFile.name)}&contentType=${encodeURIComponent(newFile.type)}`,
+                    { headers: { 'Authorization': `Bearer ${appToken}` } }
+                );
+
+                if (!signedUrlRes.ok) {
+                    throw new Error('ไม่สามารถรับ Signed URL คลังจัดเก็บได้');
+                }
+
+                const { uploadUrl, fileUrl } = await signedUrlRes.json();
+
+                // Put file to storage
+                const uploadRes = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': newFile.type
+                    },
+                    body: newFile
+                });
+
+                if (!uploadRes.ok) {
+                    throw new Error('การอัปโหลดไฟล์ใหม่ตรงไปยังคลังจัดเก็บ (Storage) ล้มเหลว');
+                }
+
+                payload.url = fileUrl;
+            }
+        }
+
+        if (isOfflineMode) {
+            const index = allPortfoliosList.findIndex(item => item.id === id);
+            if (index !== -1) {
+                allPortfoliosList[index] = { 
+                    ...allPortfoliosList[index], 
+                    name, 
+                    title: name, 
+                    category, 
+                    description 
+                };
+                if (payload.url) {
+                    allPortfoliosList[index].url = payload.url;
+                    allPortfoliosList[index].image_url = payload.url;
+                }
+                showToast('แก้ไขข้อมูลภาพพอร์ตโฟลิโอสำเร็จ (โหมดจำลองออฟไลน์)');
+            }
+            closeImageModal();
+            loadPortfolio();
+            return;
+        }
+
+        const res = await fetch(`${API_BASE}/admin/images/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${appToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('แก้ไขข้อมูลและรูปภาพพอร์ตโฟลิโอสำเร็จ');
+            closeImageModal();
+            loadPortfolio();
+        } else {
+            const err = await res.json();
+            showToast(err.message || 'ไม่สามารถแก้ไขข้อมูลรูปภาพได้', true);
+        }
+    } catch (error) {
+        console.error('Save portfolio image error:', error);
+        // Fallback
+        const index = allPortfoliosList.findIndex(item => item.id === id);
+        if (index !== -1) {
+            allPortfoliosList[index] = { 
+                ...allPortfoliosList[index], 
+                name, 
+                title: name, 
+                category, 
+                description 
+            };
+            if (payload.url) {
+                allPortfoliosList[index].url = payload.url;
+                allPortfoliosList[index].image_url = payload.url;
+            }
+            showToast('แก้ไขข้อมูลภาพพอร์ตโฟลิโอสำเร็จ (โหมดจำลองออฟไลน์)');
+        }
+        closeImageModal();
+        loadPortfolio();
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
 
 // -------------------------------------------------------------
 // ส่วนแจ้งเตือนแบบป็อปอัพ (Toast Notifications Helper)

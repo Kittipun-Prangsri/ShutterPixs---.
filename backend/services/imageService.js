@@ -61,8 +61,10 @@ module.exports = {
   createImageMetadata: async (data) => {
     const newMetadata = {
       name: data.name,
+      title: data.name, // Save both for app.js template compatibility
       category: data.category || 'other',
       url: data.url,
+      image_url: data.url, // Save both for app.js template compatibility
       description: data.description || '',
       created_at: new Date().toISOString()
     };
@@ -184,7 +186,18 @@ module.exports = {
       const index = mockImages.findIndex(img => img.id === id);
       if (index === -1) throw new Error('ไม่พบข้อมูลรูปภาพที่ต้องการแก้ไข');
       
-      mockImages[index] = { ...mockImages[index], ...data, updated_at: new Date().toISOString() };
+      const updateData = {
+        name: data.name,
+        title: data.name, // Update both for compatibility
+        category: data.category,
+        description: data.description,
+        updated_at: new Date().toISOString()
+      };
+      if (data.url) {
+        updateData.url = data.url;
+        updateData.image_url = data.url;
+      }
+      mockImages[index] = { ...mockImages[index], ...updateData };
       return mockImages[index];
     }
 
@@ -196,9 +209,16 @@ module.exports = {
       }
       
       const updateData = {
-        ...data,
+        name: data.name,
+        title: data.name, // Update both for compatibility
+        category: data.category,
+        description: data.description,
         updated_at: new Date().toISOString()
       };
+      if (data.url) {
+        updateData.url = data.url;
+        updateData.image_url = data.url;
+      }
       
       await docRef.update(updateData);
       return { id, ...doc.data(), ...updateData };
